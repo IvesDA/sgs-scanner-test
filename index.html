@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>SGS Scanner Test V9.3</title>
+<title>SGS Scanner Test V9.5</title>
 <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
 <style>
 body{margin:0;background:#eef1f5;font-family:Arial,sans-serif;color:#172033}
@@ -35,7 +35,7 @@ button{width:100%;box-sizing:border-box;border:0;border-radius:10px;padding:14px
 </head>
 <body>
 <div class="app">
-<header><h1>SGS Scanner Test V9.3</h1><p>Markkleeberg ↔ Fellbach · Packen & Empfang · automatische Probenbuchung</p></header>
+<header><h1>SGS Scanner Test V9.5</h1><p>Markkleeberg ↔ Fellbach · Packen & Empfang · automatische Probenbuchung</p></header>
 <main>
 
 <div class="card" style="margin-top:0">
@@ -61,7 +61,7 @@ button{width:100%;box-sizing:border-box;border:0;border-radius:10px;padding:14px
 <div class="row"><span>Sendungsnummer</span><span id="num" class="value"></span></div>
 
 <div class="label">PROBEN</div>
-<button class="blue" onclick="startSampleScanner()">📷 PROBE SCANNEN</button>
+<button class="blue" onclick="startSampleScanner()">📷 PROBE / PRODUKTBARCODE SCANNEN</button>
 <div id="sampleReader" class="scanner hidden"></div>
 <div id="samples"></div>
 <div class="label">ERFASSTE ZUSATZSCANS</div>
@@ -70,7 +70,7 @@ button{width:100%;box-sizing:border-box;border:0;border-radius:10px;padding:14px
 <button id="defectBtn" class="orange" type="button" onclick="defect(); return false;">GEFÄSS DEFEKT</button>
 <button id="finishBtn" class="red" onclick="finish()">ABSCHLIESSEN</button>
 <div id="msg"></div>
-<p class="hint">Beim Packen entsteht die Probenliste ausschließlich durch die Scans. Doppelte Proben-IDs sind erlaubt. Beim Empfang wird jeweils die nächste offene passende Position gebucht. Falsche oder zusätzliche Scans werden separat erfasst. „GEFÄSS DEFEKT“ bezieht sich auf die zuletzt erhaltene Probe.</p>
+<p class="hint">Beim Packen entsteht die Probenliste ausschließlich durch die Scans. Für diesen Test können auch normale Produktbarcodes von z. B. Milchpackungen verwendet werden (EAN-13, EAN-8, UPC). Doppelte Proben-IDs sind erlaubt. Beim Empfang wird jeweils die nächste offene passende Position gebucht. Falsche oder zusätzliche Scans werden separat erfasst. „GEFÄSS DEFEKT“ bezieht sich auf die zuletzt erhaltene Probe.</p>
 </div>
 </main></div>
 
@@ -153,7 +153,7 @@ function handleSampleScan(code){
    samples.push(s);
    lastBookedIndex=samples.length-1;
    render();
-   message('✓ '+s.id+' automatisch als GEPACKT erfasst.','success');
+   message('✓ Barcode '+s.id+' automatisch als GEPACKT erfasst.','success');
    return;
  }
 
@@ -176,7 +176,7 @@ function handleSampleScan(code){
  s.remark='';
  lastBookedIndex=idx;
  render();
- message('✓ '+s.id+' automatisch als ERHALTEN gebucht.','success');
+ message('✓ Barcode '+s.id+' automatisch als ERHALTEN gebucht.','success');
 }
 
 function startSampleScanner(){
@@ -185,7 +185,7 @@ function startSampleScanner(){
  if(sampleScanner){sampleScanner.stop().catch(()=>{});sampleScanner=null}
  sampleScanner=new Html5Qrcode('sampleReader');
  sampleScanner.start({facingMode:'environment'},
-   {fps:10,qrbox:{width:280,height:120},formatsToSupport:[Html5QrcodeSupportedFormats.CODE_128,Html5QrcodeSupportedFormats.CODE_39,Html5QrcodeSupportedFormats.EAN_13,Html5QrcodeSupportedFormats.EAN_8,Html5QrcodeSupportedFormats.UPC_A,Html5QrcodeSupportedFormats.UPC_E,Html5QrcodeSupportedFormats.QR_CODE]},
+   {fps:12,qrbox:{width:360,height:150},formatsToSupport:[Html5QrcodeSupportedFormats.EAN_13,Html5QrcodeSupportedFormats.EAN_8,Html5QrcodeSupportedFormats.UPC_A,Html5QrcodeSupportedFormats.UPC_E,Html5QrcodeSupportedFormats.CODE_128,Html5QrcodeSupportedFormats.CODE_39,Html5QrcodeSupportedFormats.ITF,Html5QrcodeSupportedFormats.QR_CODE]},
    (decodedText)=>handleSampleScan(decodedText),
    ()=>{}
  ).catch(()=>message('Kamera konnte nicht gestartet werden. Im Browser Kamerazugriff erlauben und die App über HTTPS öffnen.','alarm'));
