@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>SGS Scanner Test V6</title>
+<title>SGS Scanner Test V7</title>
 <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
 <style>
 body{margin:0;background:#eef1f5;font-family:Arial,sans-serif;color:#172033}
@@ -35,7 +35,7 @@ button{width:100%;box-sizing:border-box;border:0;border-radius:10px;padding:14px
 </head>
 <body>
 <div class="app">
-<header><h1>SGS Scanner Test V6</h1><p>Markkleeberg ↔ Fellbach · automatische Probenbuchung · Scan-Erfassung</p></header>
+<header><h1>SGS Scanner Test V7</h1><p>Markkleeberg ↔ Fellbach · Packen & Empfang · automatische Probenbuchung</p></header>
 <main>
 
 <div class="label">SENDUNG</div>
@@ -61,9 +61,9 @@ button{width:100%;box-sizing:border-box;border:0;border-radius:10px;padding:14px
 <div id="scanLog" class="card" style="margin-top:8px"></div>
 
 <button class="orange" onclick="defect()">GEFÄSS DEFEKT</button>
-<button class="red" onclick="finish()">EINGANG ABSCHLIESSEN</button>
+<button id="finishBtn" class="red" onclick="finish()">ABSCHLIESSEN</button>
 <div id="msg"></div>
-<p class="hint">Nach einem gültigen Probenbarcode wird die Probe automatisch gebucht – kein „Probe buchen“-Button nötig. Jeder Scan wird protokolliert. Unbekannte Proben werden als FALSCHE PROBE erfasst, aber keiner Soll-Probe zugeordnet.</p>
+<p class="hint">Beim Packen wird jede gescannte Soll-Probe der nächsten offenen Position zugeordnet – auch bei doppelter Proben-ID. Beim Empfang wird genauso die nächste offene passende Position gebucht. Falsche oder zusätzliche Scans werden separat erfasst.</p>
 </div>
 </main></div>
 
@@ -77,7 +77,7 @@ function loadShipment(){
  const p=parse(document.getElementById('barcode').value);
  if(!p){message('Barcode ungültig.','alarm');return}
  let data=null;
- if(p.sender==='072001'&&p.target==='721')data={from:'Markkleeberg',to:'Fellbach',ids:['PROBE1','PROBE2','PROBE3']};
+ if(p.sender==='072001'&&p.target==='721')data={from:'Markkleeberg',to:'Fellbach',ids:['PROBE1','PROBE1','PROBE2']};
  if(p.sender==='072101'&&p.target==='720')data={from:'Fellbach',to:'Markkleeberg',ids:['PROBE4','PROBE5','PROBE6']};
  if(!data){message('Unbekannte Testsendung.','alarm');return}
  current={...p,...data};
@@ -89,6 +89,7 @@ function loadShipment(){
  document.getElementById('to').textContent=data.to;
  document.getElementById('tour').textContent=p.tour;
  document.getElementById('num').textContent=p.num;
+ document.getElementById('finishBtn').textContent=(p.sender==='072001'?'VERSAND ABSCHLIESSEN':'EINGANG ABSCHLIESSEN');
  render();message('Sendung geladen. Jetzt können Proben automatisch gescannt werden.','success');
 }
 
@@ -109,23 +110,24 @@ function handleSampleScan(code){
  lastScan=id;
  lastScanTime=now;
  const time=new Date().toLocaleString('de-DE');
- const s=samples.find(x=>norm(x.id)===id);
+ const s=samples.find(x=>norm(x.id)===id && x.status==='OFFEN');
  if(!s){
-   scanLog.unshift({code:String(code),type:'FALSCHE PROBE',time});
-   render();
-   message('🚨 FALSCHE PROBE – '+String(code)+' gehört nicht zu dieser Sendung. Scan wurde erfasst, aber keiner Soll-Probe zugeordnet.','alarm');
+   const known=samples.some(x=>norm(x.id)===id);
+   if(known){
+     scanLog.unshift({code:String(code),type:'BEREITS ERFASST / ZUSATZSCAN',time});
+     render();
+     message('🚨 '+String(code)+' ist bereits vollständig erfasst. Der zusätzliche Scan wurde protokolliert.','alarm');
+   }else{
+     scanLog.unshift({code:String(code),type:'FALSCHE PROBE',time});
+     render();
+     message('🚨 FALSCHE PROBE – '+String(code)+' gehört nicht zu dieser Sendung. Scan wurde erfasst, aber keiner Soll-Probe zugeordnet.','alarm');
+   }
    return;
  }
- if(s.status!=='OFFEN'){
-   scanLog.unshift({code:String(code),type:'BEREITS ERFASST',time});
-   render();
-   message(s.id+' wurde bereits erfasst. Der zusätzliche Scan wurde protokolliert.','alarm');
-   return;
- }
- s.status='ERHALTEN';
- scanLog.unshift({code:String(code),type:'PROBE ERHALTEN',time});
+ const versand=(current && current.sender==='072001');
+ s.status=versand?'GEPACKT':'ERHALTEN';
  render();
- message('✓ '+s.id+' automatisch als ERHALTEN gebucht.','success');
+ message('✓ '+s.id+' automatisch als '+s.status+' gebucht.','success');
 }
 
 
@@ -165,9 +167,20 @@ function defect(){
 function finish(){
  if(!current)return;
  const missing=samples.filter(x=>x.status==='OFFEN');
+ const versand=(current.sender==='072001');
+ if(versand){
+   if(missing.length){
+     render();
+     message('🚨 VERSAND NICHT ABGESCHLOSSEN – '+missing.length+' Probe(n) noch nicht gepackt: '+missing.map(x=>x.id+' (Pos. '+x.pos+')').join(', '),'alarm');
+     return;
+   }
+   render();
+   message('✓ VERSAND ABGESCHLOSSEN – alle Proben gepackt.','success');
+   return;
+ }
  missing.forEach(x=>x.status='PROBE FEHLT');
  render();
- message(missing.length?missing.length+' Probe(n) automatisch → PROBE FEHLT':'EINGANG ABGESCHLOSSEN – alle Proben vorhanden.',missing.length?'alarm':'success');
+ message(missing.length?missing.length+' Probe(n) automatisch → PROBE FEHLT':'✓ EINGANG ABGESCHLOSSEN – alle Proben vorhanden.',missing.length?'alarm':'success');
 }
 function message(t,c){document.getElementById('msg').innerHTML='<div class="msg '+c+'">'+t+'</div>'}
 function test1(){document.getElementById('barcode').value='0720-01-1502-0000001-721';loadShipment()}
