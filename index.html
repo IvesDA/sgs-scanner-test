@@ -61,7 +61,7 @@ button{width:100%;box-sizing:border-box;border:0;border-radius:10px;padding:14px
 <button class="orange" onclick="defect()">GEFÄSS DEFEKT</button>
 <button class="red" onclick="finish()">EINGANG ABSCHLIESSEN</button>
 <div id="msg"></div>
-<p class="hint">Nach einem gültigen Probenbarcode wird die Probe automatisch gebucht – kein „Probe buchen“-Button nötig.</p>
+<p class="hint">Nach einem gültigen Probenbarcode wird die Probe automatisch gebucht – kein „Probe buchen“-Button nötig. Unbekannte oder bereits erhaltene Proben lösen sofort einen Alarm aus.</p>
 </div>
 </main></div>
 
@@ -101,7 +101,7 @@ function handleSampleScan(code){
  setTimeout(()=>scannerBusy=false,1200);
  const id=norm(code);
  const s=samples.find(x=>norm(x.id)===id);
- if(!s){message('🚨 FALSCHE PROBE – '+code+' gehört nicht zu dieser Sendung.','alarm');return}
+ if(!s){message('🚨 FALSCHE PROBE – '+String(code)+' gehört nicht zu dieser Sendung. Scan wurde NICHT gebucht.','alarm');return}
  if(s.status!=='OFFEN'){message(s.id+' wurde bereits erfasst.','alarm');return}
  s.status='ERHALTEN';
  render();
@@ -114,7 +114,7 @@ function startSampleScanner(){
  if(sampleScanner){sampleScanner.stop().catch(()=>{});sampleScanner=null}
  sampleScanner=new Html5Qrcode('sampleReader');
  sampleScanner.start({facingMode:'environment'},
-   {fps:10,qrbox:{width:280,height:120},formatsToSupport:[Html5QrcodeSupportedFormats.CODE_128,Html5QrcodeSupportedFormats.CODE_39,Html5QrcodeSupportedFormats.EAN_13,Html5QrcodeSupportedFormats.QR_CODE]},
+   {fps:10,qrbox:{width:280,height:120},formatsToSupport:[Html5QrcodeSupportedFormats.CODE_128,Html5QrcodeSupportedFormats.CODE_39,Html5QrcodeSupportedFormats.EAN_13,Html5QrcodeSupportedFormats.EAN_8,Html5QrcodeSupportedFormats.UPC_A,Html5QrcodeSupportedFormats.UPC_E,Html5QrcodeSupportedFormats.QR_CODE]},
    (decodedText)=>handleSampleScan(decodedText),
    ()=>{}
  ).catch(()=>message('Kamera konnte nicht gestartet werden. Im Browser Kamerazugriff erlauben und die App über HTTPS öffnen.','alarm'));
