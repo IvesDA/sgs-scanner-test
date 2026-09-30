@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>SGS Scanner Test V9</title>
+<title>SGS Scanner Test V9.1</title>
 <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
 <style>
 body{margin:0;background:#eef1f5;font-family:Arial,sans-serif;color:#172033}
@@ -35,16 +35,23 @@ button{width:100%;box-sizing:border-box;border:0;border-radius:10px;padding:14px
 </head>
 <body>
 <div class="app">
-<header><h1>SGS Scanner Test V9</h1><p>Markkleeberg ↔ Fellbach · Packen & Empfang · automatische Probenbuchung</p></header>
+<header><h1>SGS Scanner Test V9.1</h1><p>Markkleeberg ↔ Fellbach · Packen & Empfang · automatische Probenbuchung</p></header>
 <main>
+
+<div class="card" style="margin-top:0">
+<div class="label" style="margin-top:0">TEST-STANDORT</div>
+<label style="display:block;padding:10px 0"><input type="radio" name="siteMode" id="siteMkb" value="MKB" checked style="width:auto"> Markkleeberg</label>
+<label style="display:block;padding:10px 0"><input type="radio" name="siteMode" id="siteFellbach" value="FELLBACH" style="width:auto"> Fellbach</label>
+<div id="siteHint" class="hint">Markkleeberg: VERSAND – Sendung packen und Versand abschließen</div>
+</div>
 
 <div class="label">SENDUNG</div>
 <button class="blue" onclick="startShipmentScanner()">📷 SENDUNGSBARCODE SCANNEN</button>
 <div id="shipmentReader" class="scanner hidden"></div>
 <input id="barcode" placeholder="oder Barcode hier eingeben">
 <button class="gray" onclick="loadShipment()">SENDUNG LADEN</button>
-<button class="gray" onclick="test1()">Markkleeberg → Fellbach</button>
-<button class="gray" onclick="test2()">Fellbach → Markkleeberg</button>
+<button class="gray" onclick="test1()">Test Markkleeberg → Fellbach</button>
+<button class="gray" onclick="test2()">Test Fellbach → Markkleeberg</button>
 
 <div id="card" class="card hidden">
 <div class="row"><span>Modus</span><span id="mode" class="mode"></span></div>
@@ -69,82 +76,55 @@ button{width:100%;box-sizing:border-box;border:0;border-radius:10px;padding:14px
 
 <script>
 let current=null,samples=[],scanLog=[],shipmentScanner=null,sampleScanner=null,lastScan='',lastScanTime=0,lastBookedIndex=-1;
-let testSite = localStorage.getItem('sgsTestSite') || 'MKB';
-
-function getTestSite(){
-  return testSite;
-}
-function setTestSite(site){
-  testSite = site;
-  localStorage.setItem('sgsTestSite', site);
-  stopAllScanners();
-  current=null;
-  samples=[];
-  scanLog=[];
-  lastBookedIndex=-1;
-  lastScan='';
-  render();
-  updateSiteHint();
-}
-function updateSiteHint(){
-  const mkb = document.getElementById('siteMkb');
-  const fell = document.getElementById('siteFellbach');
-  if(mkb) mkb.checked=(testSite==='MKB');
-  if(fell) fell.checked=(testSite==='FELLBACH');
-  const h=document.getElementById('siteHint');
-  if(h){
-    h.textContent = testSite==='MKB'
-      ? 'Markkleeberg: VERSAND – Sendung packen und Versand abschließen'
-      : 'Fellbach: EMPFANG – Sendungsbarcode scannen und Proben annehmen';
-  }
-}
-function stopAllScanners(){
-  try{ if(shipmentScanner){shipmentScanner.stop().catch(()=>{}); shipmentScanner.clear();} }catch(e){}
-  try{ if(sampleScanner){sampleScanner.stop().catch(()=>{}); sampleScanner.clear();} }catch(e){}
-  shipmentScanner=null;
-  sampleScanner=null;
-}
-
 
 function norm(s){return(s||'').replace(/[\s-]/g,'').toUpperCase()}
 function parse(s){let n=norm(s);if(n.length<17)return null;return{n,sender:n.slice(0,6),tour:n.slice(6,10),num:n.slice(10,17),target:n.slice(-3)}}
 
 function loadShipment(){
- const raw=document.getElementById('barcode').value.trim();
- const p=parseShipment(raw);
- if(!p){message('Ungültiger Sendungsbarcode.','alarm');return;}
- const data={from:'Markkleeberg',to:'Fellbach',ids:[]};
- const isMkb=(testSite==='MKB');
+ const p=parse(document.getElementById('barcode').value);
+ if(!p){message('Barcode ungültig.','alarm');return}
 
- if(isMkb && !(p.sender==='072001' && p.target==='721')){
-   message('🚨 In Markkleeberg kann hier nur eine Sendung nach Fellbach geladen werden.','alarm');
-   return;
- }
- if(!isMkb && !(p.sender==='072001' && p.target==='721')){
-   message('🚨 In Fellbach kann hier nur eine Sendung aus Markkleeberg geladen werden.','alarm');
+ const isMkb=(localStorage.getItem('sgsTestSite')||'MKB')==='MKB';
+ if(!(p.sender==='072001' && p.target==='721')){
+   message(isMkb
+     ? '🚨 In Markkleeberg kann für diesen Test nur MKB → Fellbach geladen werden.'
+     : '🚨 In Fellbach kann für diesen Test nur MKB → Fellbach empfangen werden.','alarm');
    return;
  }
 
+ const data={from:'Markkleeberg',to:'Fellbach'};
  current={...p,...data};
- const saved=JSON.parse(localStorage.getItem('sgsTestLastShipment')||'null');
 
  if(isMkb){
-   // Versand: immer leer starten. Proben entstehen ausschließlich durch Scans.
+   // Versand: komplett leer. Jede Probe entsteht erst durch den realen Scan.
    samples=[];
  }else{
-   // Empfang: nur die tatsächlich beim Versand gespeicherten Proben übernehmen.
-   if(!saved || saved.shipment!==p.n || !saved.ids || !saved.ids.length){
-     message('🚨 Für diese Sendung wurde in Markkleeberg noch kein Versand abgeschlossen.','alarm');
+   // Empfang: exakt die beim Versand gespeicherten Proben übernehmen.
+   const saved=JSON.parse(localStorage.getItem('sgsTestLastShipment')||'null');
+   if(!saved || saved.shipment!==p.n || !Array.isArray(saved.ids) || saved.ids.length===0){
+     message('🚨 Diese Sendung wurde in Markkleeberg noch nicht gepackt und versendet.','alarm');
      current=null;
      samples=[];
+     document.getElementById('card').classList.add('hidden');
      return;
    }
-   samples=saved.ids.map(id=>({id,status:'OFFEN',remark:''}));
+   samples=saved.ids.map(id=>({id:String(id),status:'OFFEN',remark:''}));
  }
+
  scanLog=[];
  lastBookedIndex=-1;
  lastScan='';
- render();message('Sendung geladen. Jetzt können Proben automatisch gescannt werden.','success');
+ document.getElementById('card').classList.remove('hidden');
+ document.getElementById('mode').textContent=isMkb?'VERSAND':'EMPFANG';
+ document.getElementById('from').textContent=data.from;
+ document.getElementById('to').textContent=data.to;
+ document.getElementById('tour').textContent=p.tour;
+ document.getElementById('num').textContent=p.num;
+ document.getElementById('finishBtn').textContent=isMkb?'VERSAND ABSCHLIESSEN':'EINGANG ABSCHLIESSEN';
+ render();
+ message(isMkb
+   ? 'Sendung leer geladen. Jetzt nur die tatsächlich zu verpackenden Proben scannen.'
+   : 'Sendung aus Markkleeberg geladen. Jetzt können die Proben als ERHALTEN gescannt werden.','success');
 }
 
 function render(){
@@ -164,7 +144,7 @@ function handleSampleScan(code){
  lastScan=id;
  lastScanTime=now;
  const time=new Date().toLocaleString('de-DE');
- const versand=(current && current.sender==='072001');
+ const versand=((localStorage.getItem('sgsTestSite')||'MKB')==='MKB');
 
  if(versand){
    // Beim Versand ist jeder tatsächlich gescannte Barcode eine neue Probe.
@@ -227,7 +207,7 @@ function stopShipmentScanner(){
 }
 function defect(){
  if(!current){message('Zuerst eine Sendung laden.','alarm');return}
- const versand=(testSite==='MKB');
+ const versand=(current.sender==='072001');
  if(versand){message('GEFÄSS DEFEKT wird beim Empfänger nach dem Empfang der Probe erfasst.','alarm');return}
  if(lastBookedIndex<0 || !samples[lastBookedIndex]){
    message('Zuerst eine Probe scannen.','alarm');
@@ -246,7 +226,7 @@ function defect(){
 }
 function finish(){
  if(!current)return;
- const versand=(testSite==='MKB');
+ const versand=(current.sender==='072001');
 
  if(versand){
    if(!samples.length){
@@ -271,18 +251,41 @@ function finish(){
  message(missing.length?missing.length+' Probe(n) automatisch → PROBE FEHLT':'✓ EINGANG ABGESCHLOSSEN – alle Proben vorhanden.',missing.length?'alarm':'success');
 }
 function message(t,c){document.getElementById('msg').innerHTML='<div class="msg '+c+'">'+t+'</div>'}
+function setSite(site){
+ localStorage.setItem('sgsTestSite',site);
+ document.getElementById('siteMkb').checked=(site==='MKB');
+ document.getElementById('siteFellbach').checked=(site==='FELLBACH');
+ stopShipmentScanner();
+ if(sampleScanner){sampleScanner.stop().catch(()=>{});sampleScanner=null;}
+ document.getElementById('sampleReader').classList.add('hidden');
+ current=null;samples=[];scanLog=[];lastBookedIndex=-1;lastScan='';
+ document.getElementById('card').classList.add('hidden');
+ updateSiteHint();
+ message(site==='MKB'
+   ? 'Markkleeberg ausgewählt: VERSAND'
+   : 'Fellbach ausgewählt: EMPFANG','success');
+}
+
+function updateSiteHint(){
+ const site=localStorage.getItem('sgsTestSite')||'MKB';
+ const h=document.getElementById('siteHint');
+ if(h) h.textContent=site==='MKB'
+   ? 'Markkleeberg: VERSAND – Sendung packen und Versand abschließen'
+   : 'Fellbach: EMPFANG – Sendungsbarcode scannen und Proben annehmen';
+}
+
 function test1(){
- document.getElementById('siteMkb').click();
+ setSite('MKB');
  document.getElementById('barcode').value='0720-01-1502-0000001-721';
  loadShipment();
 }
+
 function test2(){
- document.getElementById('siteFellbach').click();
+ setSite('FELLBACH');
  document.getElementById('barcode').value='0720-01-1502-0000001-721';
  loadShipment();
 }
- loadShipment();
-}
+
 </script>
 
 <script>
@@ -293,11 +296,12 @@ if ('serviceWorker' in navigator) {
 
 <script>
 document.addEventListener('DOMContentLoaded',()=>{
-  const mkb=document.getElementById('siteMkb');
-  const fell=document.getElementById('siteFellbach');
-  if(mkb) mkb.addEventListener('change',()=>{if(mkb.checked)setTestSite('MKB');});
-  if(fell) fell.addEventListener('change',()=>{if(fell.checked)setTestSite('FELLBACH');});
-  updateSiteHint();
+ const site=localStorage.getItem('sgsTestSite')||'MKB';
+ document.getElementById('siteMkb').checked=(site==='MKB');
+ document.getElementById('siteFellbach').checked=(site==='FELLBACH');
+ document.getElementById('siteMkb').addEventListener('change',()=>setSite('MKB'));
+ document.getElementById('siteFellbach').addEventListener('change',()=>setSite('FELLBACH'));
+ updateSiteHint();
 });
 </script>
 
