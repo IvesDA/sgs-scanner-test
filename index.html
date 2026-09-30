@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>SGS Scanner Test V7</title>
+<title>SGS Scanner Test V9</title>
 <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
 <style>
 body{margin:0;background:#eef1f5;font-family:Arial,sans-serif;color:#172033}
@@ -35,7 +35,7 @@ button{width:100%;box-sizing:border-box;border:0;border-radius:10px;padding:14px
 </head>
 <body>
 <div class="app">
-<header><h1>SGS Scanner Test V7</h1><p>Markkleeberg ↔ Fellbach · Packen & Empfang · automatische Probenbuchung</p></header>
+<header><h1>SGS Scanner Test V9</h1><p>Markkleeberg ↔ Fellbach · Packen & Empfang · automatische Probenbuchung</p></header>
 <main>
 
 <div class="label">SENDUNG</div>
@@ -43,8 +43,8 @@ button{width:100%;box-sizing:border-box;border:0;border-radius:10px;padding:14px
 <div id="shipmentReader" class="scanner hidden"></div>
 <input id="barcode" placeholder="oder Barcode hier eingeben">
 <button class="gray" onclick="loadShipment()">SENDUNG LADEN</button>
-<button class="gray" onclick="test1()">Test Markkleeberg → Fellbach</button>
-<button class="gray" onclick="test2()">Test Fellbach → Markkleeberg</button>
+<button class="gray" onclick="test1()">Markkleeberg → Fellbach</button>
+<button class="gray" onclick="test2()">Fellbach → Markkleeberg</button>
 
 <div id="card" class="card hidden">
 <div class="row"><span>Modus</span><span id="mode" class="mode"></span></div>
@@ -63,33 +63,87 @@ button{width:100%;box-sizing:border-box;border:0;border-radius:10px;padding:14px
 <button class="orange" onclick="defect()">GEFÄSS DEFEKT</button>
 <button id="finishBtn" class="red" onclick="finish()">ABSCHLIESSEN</button>
 <div id="msg"></div>
-<p class="hint">Beim Packen wird jede gescannte Soll-Probe der nächsten offenen Position zugeordnet – auch bei doppelter Proben-ID. Beim Empfang wird genauso die nächste offene passende Position gebucht. Falsche oder zusätzliche Scans werden separat erfasst.</p>
+<p class="hint">Beim Packen entsteht die Probenliste ausschließlich durch die Scans. Doppelte Proben-IDs sind erlaubt. Beim Empfang wird jeweils die nächste offene passende Position gebucht. Falsche oder zusätzliche Scans werden separat erfasst. „GEFÄSS DEFEKT“ bezieht sich auf die zuletzt erhaltene Probe.</p>
 </div>
 </main></div>
 
 <script>
-let current=null,samples=[],scanLog=[],shipmentScanner=null,sampleScanner=null,lastScan='',lastScanTime=0;
+let current=null,samples=[],scanLog=[],shipmentScanner=null,sampleScanner=null,lastScan='',lastScanTime=0,lastBookedIndex=-1;
+let testSite = localStorage.getItem('sgsTestSite') || 'MKB';
+
+function getTestSite(){
+  return testSite;
+}
+function setTestSite(site){
+  testSite = site;
+  localStorage.setItem('sgsTestSite', site);
+  stopAllScanners();
+  current=null;
+  samples=[];
+  scanLog=[];
+  lastBookedIndex=-1;
+  lastScan='';
+  render();
+  updateSiteHint();
+}
+function updateSiteHint(){
+  const mkb = document.getElementById('siteMkb');
+  const fell = document.getElementById('siteFellbach');
+  if(mkb) mkb.checked=(testSite==='MKB');
+  if(fell) fell.checked=(testSite==='FELLBACH');
+  const h=document.getElementById('siteHint');
+  if(h){
+    h.textContent = testSite==='MKB'
+      ? 'Markkleeberg: VERSAND – Sendung packen und Versand abschließen'
+      : 'Fellbach: EMPFANG – Sendungsbarcode scannen und Proben annehmen';
+  }
+}
+function stopAllScanners(){
+  try{ if(shipmentScanner){shipmentScanner.stop().catch(()=>{}); shipmentScanner.clear();} }catch(e){}
+  try{ if(sampleScanner){sampleScanner.stop().catch(()=>{}); sampleScanner.clear();} }catch(e){}
+  shipmentScanner=null;
+  sampleScanner=null;
+}
+
 
 function norm(s){return(s||'').replace(/[\s-]/g,'').toUpperCase()}
 function parse(s){let n=norm(s);if(n.length<17)return null;return{n,sender:n.slice(0,6),tour:n.slice(6,10),num:n.slice(10,17),target:n.slice(-3)}}
 
 function loadShipment(){
- const p=parse(document.getElementById('barcode').value);
- if(!p){message('Barcode ungültig.','alarm');return}
- let data=null;
- if(p.sender==='072001'&&p.target==='721')data={from:'Markkleeberg',to:'Fellbach',ids:['PROBE1','PROBE1','PROBE2']};
- if(p.sender==='072101'&&p.target==='720')data={from:'Fellbach',to:'Markkleeberg',ids:['PROBE4','PROBE5','PROBE6']};
- if(!data){message('Unbekannte Testsendung.','alarm');return}
+ const raw=document.getElementById('barcode').value.trim();
+ const p=parseShipment(raw);
+ if(!p){message('Ungültiger Sendungsbarcode.','alarm');return;}
+ const data={from:'Markkleeberg',to:'Fellbach',ids:[]};
+ const isMkb=(testSite==='MKB');
+
+ if(isMkb && !(p.sender==='072001' && p.target==='721')){
+   message('🚨 In Markkleeberg kann hier nur eine Sendung nach Fellbach geladen werden.','alarm');
+   return;
+ }
+ if(!isMkb && !(p.sender==='072001' && p.target==='721')){
+   message('🚨 In Fellbach kann hier nur eine Sendung aus Markkleeberg geladen werden.','alarm');
+   return;
+ }
+
  current={...p,...data};
- samples=data.ids.map(id=>({id,status:'OFFEN',remark:''}));
+ const saved=JSON.parse(localStorage.getItem('sgsTestLastShipment')||'null');
+
+ if(isMkb){
+   // Versand: immer leer starten. Proben entstehen ausschließlich durch Scans.
+   samples=[];
+ }else{
+   // Empfang: nur die tatsächlich beim Versand gespeicherten Proben übernehmen.
+   if(!saved || saved.shipment!==p.n || !saved.ids || !saved.ids.length){
+     message('🚨 Für diese Sendung wurde in Markkleeberg noch kein Versand abgeschlossen.','alarm');
+     current=null;
+     samples=[];
+     return;
+   }
+   samples=saved.ids.map(id=>({id,status:'OFFEN',remark:''}));
+ }
  scanLog=[];
- document.getElementById('card').classList.remove('hidden');
- document.getElementById('mode').textContent=p.sender==='072001'?'VERSAND':p.target==='720'?'EMPFANG':'FREMD';
- document.getElementById('from').textContent=data.from;
- document.getElementById('to').textContent=data.to;
- document.getElementById('tour').textContent=p.tour;
- document.getElementById('num').textContent=p.num;
- document.getElementById('finishBtn').textContent=(p.sender==='072001'?'VERSAND ABSCHLIESSEN':'EINGANG ABSCHLIESSEN');
+ lastBookedIndex=-1;
+ lastScan='';
  render();message('Sendung geladen. Jetzt können Proben automatisch gescannt werden.','success');
 }
 
@@ -110,26 +164,40 @@ function handleSampleScan(code){
  lastScan=id;
  lastScanTime=now;
  const time=new Date().toLocaleString('de-DE');
- const s=samples.find(x=>norm(x.id)===id && x.status==='OFFEN');
- if(!s){
+ const versand=(current && current.sender==='072001');
+
+ if(versand){
+   // Beim Versand ist jeder tatsächlich gescannte Barcode eine neue Probe.
+   // Doppelte Proben-IDs sind ausdrücklich erlaubt.
+   const s={id:String(code),status:'GEPACKT',remark:''};
+   samples.push(s);
+   lastBookedIndex=samples.length-1;
+   render();
+   message('✓ '+s.id+' automatisch als GEPACKT erfasst.','success');
+   return;
+ }
+
+ // Beim Empfang muss die Probe zu einer tatsächlich versendeten Position passen.
+ const idx=samples.findIndex(x=>norm(x.id)===id && x.status==='OFFEN');
+ if(idx<0){
    const known=samples.some(x=>norm(x.id)===id);
+   const type=known?'BEREITS ERFASST / ZUSATZSCAN':'FALSCHE PROBE';
+   scanLog.unshift({code:String(code),type,time});
+   render();
    if(known){
-     scanLog.unshift({code:String(code),type:'BEREITS ERFASST / ZUSATZSCAN',time});
-     render();
      message('🚨 '+String(code)+' ist bereits vollständig erfasst. Der zusätzliche Scan wurde protokolliert.','alarm');
    }else{
-     scanLog.unshift({code:String(code),type:'FALSCHE PROBE',time});
-     render();
      message('🚨 FALSCHE PROBE – '+String(code)+' gehört nicht zu dieser Sendung. Scan wurde erfasst, aber keiner Soll-Probe zugeordnet.','alarm');
    }
    return;
  }
- const versand=(current && current.sender==='072001');
- s.status=versand?'GEPACKT':'ERHALTEN';
+ const s=samples[idx];
+ s.status='ERHALTEN';
+ s.remark='';
+ lastBookedIndex=idx;
  render();
- message('✓ '+s.id+' automatisch als '+s.status+' gebucht.','success');
+ message('✓ '+s.id+' automatisch als ERHALTEN gebucht.','success');
 }
-
 
 function startSampleScanner(){
  if(!current){message('Zuerst eine Sendung laden.','alarm');return}
@@ -159,32 +227,62 @@ function stopShipmentScanner(){
 }
 function defect(){
  if(!current){message('Zuerst eine Sendung laden.','alarm');return}
- const s=samples.find(x=>x.status==='OFFEN');
- if(!s){message('Keine offene Probe mehr.','alarm');return}
- s.status='GEFÄSS DEFEKT';s.remark='Test: Flasche gebrochen';render();
- message(s.id+' → GEFÄSS DEFEKT. Status bleibt ERHALTEN/physisch erhalten.','alarm');
+ const versand=(testSite==='MKB');
+ if(versand){message('GEFÄSS DEFEKT wird beim Empfänger nach dem Empfang der Probe erfasst.','alarm');return}
+ if(lastBookedIndex<0 || !samples[lastBookedIndex]){
+   message('Zuerst eine Probe scannen.','alarm');
+   return;
+ }
+ const s=samples[lastBookedIndex];
+ if(s.status!=='ERHALTEN'){
+   message('GEFÄSS DEFEKT kann nur für eine bereits erhaltene Probe erfasst werden.','alarm');
+   return;
+ }
+ const note=prompt('Bemerkung zum Gefäßdefekt:', 'Flasche gebrochen');
+ if(note===null)return;
+ s.remark='GEFÄSS DEFEKT: '+(note.trim()||'ohne nähere Angabe');
+ render();
+ message('⚠ '+s.id+' → GEFÄSS DEFEKT erfasst. Die Probe bleibt ERHALTEN.','alarm');
 }
 function finish(){
  if(!current)return;
- const missing=samples.filter(x=>x.status==='OFFEN');
- const versand=(current.sender==='072001');
+ const versand=(testSite==='MKB');
+
  if(versand){
-   if(missing.length){
-     render();
-     message('🚨 VERSAND NICHT ABGESCHLOSSEN – '+missing.length+' Probe(n) noch nicht gepackt: '+missing.map(x=>x.id+' (Pos. '+x.pos+')').join(', '),'alarm');
+   if(!samples.length){
+     message('🚨 VERSAND NICHT ABGESCHLOSSEN – es wurde noch keine Probe gescannt.','alarm');
      return;
    }
+   localStorage.setItem('sgsTestLastShipment', JSON.stringify({
+     shipment:current.n,
+     from:current.from,
+     to:current.to,
+     ids:samples.map(x=>x.id),
+     sentAt:new Date().toLocaleString('de-DE')
+   }));
    render();
-   message('✓ VERSAND ABGESCHLOSSEN – alle Proben gepackt.','success');
+   message('✓ VERSAND ABGESCHLOSSEN – '+samples.length+' Probe(n) gepackt. Die gescannten Proben stehen beim Test-Empfang zur Verfügung.','success');
    return;
  }
+
+ const missing=samples.filter(x=>x.status==='OFFEN');
  missing.forEach(x=>x.status='PROBE FEHLT');
  render();
  message(missing.length?missing.length+' Probe(n) automatisch → PROBE FEHLT':'✓ EINGANG ABGESCHLOSSEN – alle Proben vorhanden.',missing.length?'alarm':'success');
 }
 function message(t,c){document.getElementById('msg').innerHTML='<div class="msg '+c+'">'+t+'</div>'}
-function test1(){document.getElementById('barcode').value='0720-01-1502-0000001-721';loadShipment()}
-function test2(){document.getElementById('barcode').value='0721-01-1502-0000002-720';loadShipment()}
+function test1(){
+ document.getElementById('siteMkb').click();
+ document.getElementById('barcode').value='0720-01-1502-0000001-721';
+ loadShipment();
+}
+function test2(){
+ document.getElementById('siteFellbach').click();
+ document.getElementById('barcode').value='0720-01-1502-0000001-721';
+ loadShipment();
+}
+ loadShipment();
+}
 </script>
 
 <script>
@@ -192,5 +290,16 @@ if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => navigator.serviceWorker.register('sw.js'));
 }
 </script>
+
+<script>
+document.addEventListener('DOMContentLoaded',()=>{
+  const mkb=document.getElementById('siteMkb');
+  const fell=document.getElementById('siteFellbach');
+  if(mkb) mkb.addEventListener('change',()=>{if(mkb.checked)setTestSite('MKB');});
+  if(fell) fell.addEventListener('change',()=>{if(fell.checked)setTestSite('FELLBACH');});
+  updateSiteHint();
+});
+</script>
+
 </body>
 </html>
