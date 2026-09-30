@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>SGS Scanner Test V2</title>
+<title>SGS Scanner Test V5</title>
 <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
 <style>
 body{margin:0;background:#eef1f5;font-family:Arial,sans-serif;color:#172033}
@@ -35,7 +35,7 @@ button{width:100%;box-sizing:border-box;border:0;border-radius:10px;padding:14px
 </head>
 <body>
 <div class="app">
-<header><h1>SGS Scanner Test V2</h1><p>Markkleeberg ↔ Fellbach · automatische Probenbuchung</p></header>
+<header><h1>SGS Scanner Test V5</h1><p>Markkleeberg ↔ Fellbach · automatische Probenbuchung</p></header>
 <main>
 
 <div class="label">SENDUNG</div>
@@ -66,7 +66,7 @@ button{width:100%;box-sizing:border-box;border:0;border-radius:10px;padding:14px
 </main></div>
 
 <script>
-let current=null,samples=[],shipmentScanner=null,sampleScanner=null,scannerBusy=false;
+let current=null,samples=[],shipmentScanner=null,sampleScanner=null,lastScan='',lastScanTime=0;
 
 function norm(s){return(s||'').replace(/[\s-]/g,'').toUpperCase()}
 function parse(s){let n=norm(s);if(n.length<17)return null;return{n,sender:n.slice(0,6),tour:n.slice(6,10),num:n.slice(10,17),target:n.slice(-3)}}
@@ -96,10 +96,11 @@ function render(){
 }
 
 function handleSampleScan(code){
- if(scannerBusy)return;
- scannerBusy=true;
- setTimeout(()=>scannerBusy=false,1200);
  const id=norm(code);
+ const now=Date.now();
+ if(id===lastScan && now-lastScanTime<1500)return;
+ lastScan=id;
+ lastScanTime=now;
  const s=samples.find(x=>norm(x.id)===id);
  if(!s){message('🚨 FALSCHE PROBE – '+String(code)+' gehört nicht zu dieser Sendung. Scan wurde NICHT gebucht.','alarm');return}
  if(s.status!=='OFFEN'){message(s.id+' wurde bereits erfasst.','alarm');return}
