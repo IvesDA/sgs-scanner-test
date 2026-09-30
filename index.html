@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>SGS Scanner Test V9.1</title>
+<title>SGS Scanner Test V9.2</title>
 <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
 <style>
 body{margin:0;background:#eef1f5;font-family:Arial,sans-serif;color:#172033}
@@ -35,7 +35,7 @@ button{width:100%;box-sizing:border-box;border:0;border-radius:10px;padding:14px
 </head>
 <body>
 <div class="app">
-<header><h1>SGS Scanner Test V9.1</h1><p>Markkleeberg ↔ Fellbach · Packen & Empfang · automatische Probenbuchung</p></header>
+<header><h1>SGS Scanner Test V9.2</h1><p>Markkleeberg ↔ Fellbach · Packen & Empfang · automatische Probenbuchung</p></header>
 <main>
 
 <div class="card" style="margin-top:0">
@@ -218,9 +218,9 @@ function defect(){
    message('GEFÄSS DEFEKT kann nur für eine bereits erhaltene Probe erfasst werden.','alarm');
    return;
  }
- const note=prompt('Bemerkung zum Gefäßdefekt:', 'Flasche gebrochen');
- if(note===null)return;
- s.remark='GEFÄSS DEFEKT: '+(note.trim()||'ohne nähere Angabe');
+ // Für den Test wird der Defekt direkt sichtbar erfasst.
+ // Kein Browser-Prompt, damit die Funktion auch auf Geräten zuverlässig reagiert.
+ s.remark='GEFÄSS DEFEKT: Flasche gebrochen';
  render();
  message('⚠ '+s.id+' → GEFÄSS DEFEKT erfasst. Die Probe bleibt ERHALTEN.','alarm');
 }
