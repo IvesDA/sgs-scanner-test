@@ -256,10 +256,30 @@ function finish(){
    return;
  }
 
+ const employee=prompt('Eingang Mitarbeiter:', localStorage.getItem('sgsTestEmployee')||'');
+ if(employee===null){
+   message('EINGANG NICHT ABGESCHLOSSEN – Mitarbeitername wurde nicht eingegeben.','alarm');
+   return;
+ }
+ const employeeName=employee.trim();
+ if(!employeeName){
+   message('EINGANG NICHT ABGESCHLOSSEN – bitte einen Mitarbeiternamen eingeben.','alarm');
+   return;
+ }
+ localStorage.setItem('sgsTestEmployee',employeeName);
  const missing=samples.filter(x=>x.status==='OFFEN');
  missing.forEach(x=>x.status='PROBE FEHLT');
+ const defects=samples.filter(x=>String(x.remark||'').startsWith('GEFÄSS DEFEKT:')).length;
+ const complete=(missing.length===0 && defects===0);
  render();
- message(missing.length?missing.length+' Probe(n) automatisch → PROBE FEHLT':'✓ EINGANG ABGESCHLOSSEN – alle Proben vorhanden.',missing.length?'alarm':'success');
+ if(complete){
+   message('✓ EINGANG ABGESCHLOSSEN – alle Proben vorhanden. Mitarbeiter: '+employeeName,'success');
+ }else{
+   const parts=[];
+   if(missing.length) parts.push(missing.length+' Probe(n) fehlen');
+   if(defects) parts.push(defects+' Gefäßdefekt(e)');
+   message('⚠ EINGANG ABGESCHLOSSEN – UNVOLLSTÄNDIG: '+parts.join(', ')+'. Mitarbeiter: '+employeeName,'alarm');
+ }
 }
 function message(t,c){document.getElementById('msg').innerHTML='<div class="msg '+c+'">'+t+'</div>'}
 function setSite(site){
