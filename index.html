@@ -208,7 +208,7 @@ function stopShipmentScanner(){
 function defect(){
  try{
   if(!current){message('Zuerst eine Sendung laden.','alarm');return false}
-  const versand=(current.sender==='072001');
+  const versand=((localStorage.getItem('sgsTestSite')||'MKB')==='MKB');
   if(versand){message('GEFÄSS DEFEKT wird beim Empfänger nach dem Empfang der Probe erfasst.','alarm');return false}
   let idx=lastBookedIndex;
   if(idx<0 || !samples[idx] || samples[idx].status!=='ERHALTEN'){
@@ -237,7 +237,7 @@ function defect(){
 }
 function finish(){
  if(!current)return;
- const versand=(current.sender==='072001');
+ const versand=((localStorage.getItem('sgsTestSite')||'MKB')==='MKB');
 
  if(versand){
    if(!samples.length){
