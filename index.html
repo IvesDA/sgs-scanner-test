@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>SGS Scanner Test V5</title>
+<title>SGS Scanner Test V6</title>
 <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
 <style>
 body{margin:0;background:#eef1f5;font-family:Arial,sans-serif;color:#172033}
@@ -35,7 +35,7 @@ button{width:100%;box-sizing:border-box;border:0;border-radius:10px;padding:14px
 </head>
 <body>
 <div class="app">
-<header><h1>SGS Scanner Test V5</h1><p>Markkleeberg ↔ Fellbach · automatische Probenbuchung</p></header>
+<header><h1>SGS Scanner Test V6</h1><p>Markkleeberg ↔ Fellbach · automatische Probenbuchung · Scan-Erfassung</p></header>
 <main>
 
 <div class="label">SENDUNG</div>
@@ -57,16 +57,18 @@ button{width:100%;box-sizing:border-box;border:0;border-radius:10px;padding:14px
 <button class="blue" onclick="startSampleScanner()">📷 PROBE SCANNEN</button>
 <div id="sampleReader" class="scanner hidden"></div>
 <div id="samples"></div>
+<div class="label">ERFASSTE ZUSATZSCANS</div>
+<div id="scanLog" class="card" style="margin-top:8px"></div>
 
 <button class="orange" onclick="defect()">GEFÄSS DEFEKT</button>
 <button class="red" onclick="finish()">EINGANG ABSCHLIESSEN</button>
 <div id="msg"></div>
-<p class="hint">Nach einem gültigen Probenbarcode wird die Probe automatisch gebucht – kein „Probe buchen“-Button nötig. Unbekannte oder bereits erhaltene Proben lösen sofort einen Alarm aus.</p>
+<p class="hint">Nach einem gültigen Probenbarcode wird die Probe automatisch gebucht – kein „Probe buchen“-Button nötig. Jeder Scan wird protokolliert. Unbekannte Proben werden als FALSCHE PROBE erfasst, aber keiner Soll-Probe zugeordnet.</p>
 </div>
 </main></div>
 
 <script>
-let current=null,samples=[],shipmentScanner=null,sampleScanner=null,lastScan='',lastScanTime=0;
+let current=null,samples=[],scanLog=[],shipmentScanner=null,sampleScanner=null,lastScan='',lastScanTime=0;
 
 function norm(s){return(s||'').replace(/[\s-]/g,'').toUpperCase()}
 function parse(s){let n=norm(s);if(n.length<17)return null;return{n,sender:n.slice(0,6),tour:n.slice(6,10),num:n.slice(10,17),target:n.slice(-3)}}
@@ -80,6 +82,7 @@ function loadShipment(){
  if(!data){message('Unbekannte Testsendung.','alarm');return}
  current={...p,...data};
  samples=data.ids.map(id=>({id,status:'OFFEN',remark:''}));
+ scanLog=[];
  document.getElementById('card').classList.remove('hidden');
  document.getElementById('mode').textContent=p.sender==='072001'?'VERSAND':p.target==='720'?'EMPFANG':'FREMD';
  document.getElementById('from').textContent=data.from;
@@ -91,9 +94,13 @@ function loadShipment(){
 
 function render(){
  document.getElementById('samples').innerHTML=samples.map((s,i)=>
- '<div class="sample"><span><b>'+s.id+'</b><br><span class="status '+(s.status==='ERHALTEN'?'ok':s.status==='GEFÄSS DEFEKT'?'warn':s.status==='PROBE FEHLT'?'bad':'')+'">'+s.status+'</span>'+
- (s.remark?'<br><small>'+s.remark+'</small>':'')+'</span><b>'+(i+1)+'</b></div>').join('')
+ '<div class="sample"><span><b>'+s.id+'</b><br><span class="status '+(s.status==='ERHALTEN'?'ok':s.status==='GEFÄSS DEFEKT'?'warn':s.status==='PROBE FEHLT'?'bad':'')+'">'+s.status+'</span>'+ 
+ (s.remark?'<br><small>'+s.remark+'</small>':'')+'</span><b>'+(i+1)+'</b></div>').join('');
+ const log=document.getElementById('scanLog');
+ if(!scanLog.length){log.innerHTML='<small class="hint">Noch keine zusätzlichen Scans erfasst.</small>';return;}
+ log.innerHTML=scanLog.map(x=>'<div class="sample"><span><b>'+x.code+'</b><br><span class="status '+(x.type==='FALSCHE PROBE'?'bad':'warn')+'">'+x.type+'</span><br><small>'+x.time+'</small></span></div>').join('');
 }
+
 
 function handleSampleScan(code){
  const id=norm(code);
@@ -101,13 +108,26 @@ function handleSampleScan(code){
  if(id===lastScan && now-lastScanTime<1500)return;
  lastScan=id;
  lastScanTime=now;
+ const time=new Date().toLocaleString('de-DE');
  const s=samples.find(x=>norm(x.id)===id);
- if(!s){message('🚨 FALSCHE PROBE – '+String(code)+' gehört nicht zu dieser Sendung. Scan wurde NICHT gebucht.','alarm');return}
- if(s.status!=='OFFEN'){message(s.id+' wurde bereits erfasst.','alarm');return}
+ if(!s){
+   scanLog.unshift({code:String(code),type:'FALSCHE PROBE',time});
+   render();
+   message('🚨 FALSCHE PROBE – '+String(code)+' gehört nicht zu dieser Sendung. Scan wurde erfasst, aber keiner Soll-Probe zugeordnet.','alarm');
+   return;
+ }
+ if(s.status!=='OFFEN'){
+   scanLog.unshift({code:String(code),type:'BEREITS ERFASST',time});
+   render();
+   message(s.id+' wurde bereits erfasst. Der zusätzliche Scan wurde protokolliert.','alarm');
+   return;
+ }
  s.status='ERHALTEN';
+ scanLog.unshift({code:String(code),type:'PROBE ERHALTEN',time});
  render();
  message('✓ '+s.id+' automatisch als ERHALTEN gebucht.','success');
 }
+
 
 function startSampleScanner(){
  if(!current){message('Zuerst eine Sendung laden.','alarm');return}
