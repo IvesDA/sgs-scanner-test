@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>SGS Scanner Test V9.2</title>
+<title>SGS Scanner Test V9.3</title>
 <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
 <style>
 body{margin:0;background:#eef1f5;font-family:Arial,sans-serif;color:#172033}
@@ -35,7 +35,7 @@ button{width:100%;box-sizing:border-box;border:0;border-radius:10px;padding:14px
 </head>
 <body>
 <div class="app">
-<header><h1>SGS Scanner Test V9.2</h1><p>Markkleeberg ↔ Fellbach · Packen & Empfang · automatische Probenbuchung</p></header>
+<header><h1>SGS Scanner Test V9.3</h1><p>Markkleeberg ↔ Fellbach · Packen & Empfang · automatische Probenbuchung</p></header>
 <main>
 
 <div class="card" style="margin-top:0">
@@ -67,7 +67,7 @@ button{width:100%;box-sizing:border-box;border:0;border-radius:10px;padding:14px
 <div class="label">ERFASSTE ZUSATZSCANS</div>
 <div id="scanLog" class="card" style="margin-top:8px"></div>
 
-<button class="orange" onclick="defect()">GEFÄSS DEFEKT</button>
+<button id="defectBtn" class="orange" type="button" onclick="defect(); return false;">GEFÄSS DEFEKT</button>
 <button id="finishBtn" class="red" onclick="finish()">ABSCHLIESSEN</button>
 <div id="msg"></div>
 <p class="hint">Beim Packen entsteht die Probenliste ausschließlich durch die Scans. Doppelte Proben-IDs sind erlaubt. Beim Empfang wird jeweils die nächste offene passende Position gebucht. Falsche oder zusätzliche Scans werden separat erfasst. „GEFÄSS DEFEKT“ bezieht sich auf die zuletzt erhaltene Probe.</p>
@@ -206,23 +206,34 @@ function stopShipmentScanner(){
  document.getElementById('shipmentReader').classList.add('hidden')
 }
 function defect(){
- if(!current){message('Zuerst eine Sendung laden.','alarm');return}
- const versand=(current.sender==='072001');
- if(versand){message('GEFÄSS DEFEKT wird beim Empfänger nach dem Empfang der Probe erfasst.','alarm');return}
- if(lastBookedIndex<0 || !samples[lastBookedIndex]){
-   message('Zuerst eine Probe scannen.','alarm');
-   return;
+ try{
+  if(!current){message('Zuerst eine Sendung laden.','alarm');return false}
+  const versand=(current.sender==='072001');
+  if(versand){message('GEFÄSS DEFEKT wird beim Empfänger nach dem Empfang der Probe erfasst.','alarm');return false}
+  let idx=lastBookedIndex;
+  if(idx<0 || !samples[idx] || samples[idx].status!=='ERHALTEN'){
+    for(let i=samples.length-1;i>=0;i--){
+      if(samples[i].status==='ERHALTEN'){idx=i;break}
+    }
+  }
+  if(idx<0 || !samples[idx]){
+    message('Zuerst eine Probe scannen und als ERHALTEN buchen.','alarm');
+    return false;
+  }
+  const s=samples[idx];
+  if(s.status!=='ERHALTEN'){
+    message('GEFÄSS DEFEKT kann nur für eine bereits erhaltene Probe erfasst werden.','alarm');
+    return false;
+  }
+  s.remark='GEFÄSS DEFEKT: Flasche gebrochen';
+  lastBookedIndex=idx;
+  render();
+  message('⚠ '+s.id+' → GEFÄSS DEFEKT erfasst. Die Probe bleibt ERHALTEN.','alarm');
+  return false;
+ }catch(e){
+  message('Fehler beim Erfassen des Gefäßdefekts: '+e.message,'alarm');
+  return false;
  }
- const s=samples[lastBookedIndex];
- if(s.status!=='ERHALTEN'){
-   message('GEFÄSS DEFEKT kann nur für eine bereits erhaltene Probe erfasst werden.','alarm');
-   return;
- }
- // Für den Test wird der Defekt direkt sichtbar erfasst.
- // Kein Browser-Prompt, damit die Funktion auch auf Geräten zuverlässig reagiert.
- s.remark='GEFÄSS DEFEKT: Flasche gebrochen';
- render();
- message('⚠ '+s.id+' → GEFÄSS DEFEKT erfasst. Die Probe bleibt ERHALTEN.','alarm');
 }
 function finish(){
  if(!current)return;
